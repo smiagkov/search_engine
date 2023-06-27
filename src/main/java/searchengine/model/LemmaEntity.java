@@ -14,7 +14,7 @@ public class LemmaEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
-    @OneToMany(fetch = FetchType.LAZY, mappedBy = "lemma", cascade = CascadeType.REMOVE)
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "lemma")
     List<IndexEntity> indexes = new ArrayList<>();
     @ManyToOne
     @JoinColumn(name = "site_id", nullable = false,

@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.utils;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
@@ -68,5 +68,17 @@ public class PageParsingUtils {
     public String getTitle(String html) {
         Document document = Jsoup.parse(html);
         return document.title();
+    }
+
+    public String normalizeSiteUrl(String urlPresentation) {
+        URL url;
+        try {
+            url = new URL(urlPresentation);
+        } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
+        return url.getProtocol()
+                .concat("://")
+                .concat(url.getHost());
     }
 }

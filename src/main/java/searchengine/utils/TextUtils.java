@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.utils;
 
 import org.jsoup.Jsoup;
 import org.springframework.stereotype.Component;

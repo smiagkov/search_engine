@@ -16,7 +16,7 @@ spring:
         generate_statistics: false
     show-sql: false
     hibernate:
-      ddl-auto: none
+      ddl-auto: update
 
 parsing-settings:
   jsoup_referer: http://www.google.com
@@ -26,8 +26,8 @@ parsing-settings:
 
 indexing-settings:
   sites:
-#    - url: https://www.lenta.ru
-#      name: Лента.ру
+    - url: https://www.lenta.ru
+      name: Лента.ру
     - url: https://www.skillbox.ru
       name: Skillbox
     - url: https://www.playback.ru

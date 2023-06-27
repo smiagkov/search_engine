@@ -8,10 +8,15 @@ import org.jsoup.nodes.Document;
 import org.springframework.http.HttpStatus;
 import searchengine.config.PagesCollectorConfig;
 import searchengine.exceptions.DuplicatePageException;
+import searchengine.model.IndexEntity;
+import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
+import searchengine.repositories.IndexRepository;
+import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.model.SiteEntity;
 import searchengine.repositories.SiteRepository;
+import searchengine.utils.*;
 
 import java.io.IOException;
 import java.net.URL;
@@ -26,9 +31,12 @@ import java.util.stream.Collectors;
 public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
     private static SiteRepository siteRepository;
     private static PageRepository pageRepository;
-    private static LemmaService lemmaService;
+    private static LemmaRepository lemmaRepository;
+    private static IndexRepository indexRepository;
+    private static LemmaUtils lemmaUtils;
     private static PagesCollectorConfig params;
     private static PageParsingUtils pageParsingUtils;
+    private static TextUtils textUtils;
     private String path;
     private final SiteEntity site;
     private static boolean isStartedIndexing;
@@ -67,7 +75,7 @@ public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
             if (response.statusCode() >= 400) {
                 return PagesCollectionEndType.COMPLETED;
             }
-            lemmaService.addLemmasAndIndexesToDB(site, page);
+            addLemmasAndIndexesToDB(site, page);
             children = getChildPages(document);
         } catch (HttpStatusException e) {
             page.update(e.getStatusCode());
@@ -107,21 +115,27 @@ public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
                 .toList();
     }
 
-    public static void addRepositories(SiteRepository siteRepository, PageRepository pageRepository) {
+    public static void addRepositories(SiteRepository siteRepository, PageRepository pageRepository,
+                                       LemmaRepository lemmaRepository, IndexRepository indexRepository) {
         PagesCollector.pageRepository = pageRepository;
         PagesCollector.siteRepository = siteRepository;
+        PagesCollector.lemmaRepository = lemmaRepository;
+        PagesCollector.indexRepository = indexRepository;
     }
 
     public static void setParams(PagesCollectorConfig params) {
         PagesCollector.params = params;
     }
 
-    public static void setUtils(PageParsingUtils pageParsingUtils) {
+    public static void setUtils(PageParsingUtils pageParsingUtils, TextUtils textUtils,
+                                LemmaUtils lemmaUtils) {
         PagesCollector.pageParsingUtils = pageParsingUtils;
+        PagesCollector.textUtils = textUtils;
+        PagesCollector.lemmaUtils = lemmaUtils;
     }
 
-    public static void setLemmaService(LemmaService lemmaService) {
-        PagesCollector.lemmaService = lemmaService;
+    public static void setLemmaUtils(LemmaUtils lemmaUtils) {
+        PagesCollector.lemmaUtils = lemmaUtils;
     }
 
     public static void setStartedParsing(boolean isStartedIndexing) {
@@ -130,5 +144,29 @@ public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
 
     public static void stopParsing() {
         isStartedIndexing = false;
+    }
+
+    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page) {
+        Map<String, Integer> lemmas = lemmaUtils.getLemmasStatistics(
+                textUtils.removeHtmlTags(page.getContent()));
+        for (Map.Entry<String, Integer> lemmaEntry : lemmas.entrySet()) {
+            LemmaEntity lemma = addOrUpdateLemma(site, lemmaEntry);
+            indexRepository.save(new IndexEntity(page, lemma, lemmaEntry.getValue()));
+        }
+    }
+
+    private LemmaEntity addOrUpdateLemma(SiteEntity site, Map.Entry<String, Integer> lemmaEntry) {
+        LemmaEntity lemma;
+        synchronized (lock) {
+            Optional<LemmaEntity> optionalLemma = lemmaRepository.findBySiteAndLemma(site, lemmaEntry.getKey());
+            if (optionalLemma.isEmpty()) {
+                lemma = new LemmaEntity(site, lemmaEntry.getKey());
+            } else {
+                lemma = optionalLemma.get();
+                lemma.setFrequency(lemma.getFrequency() + 1);
+            }
+            lemmaRepository.save(lemma);
+        }
+        return lemma;
     }
 }

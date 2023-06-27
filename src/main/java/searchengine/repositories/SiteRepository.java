@@ -3,7 +3,6 @@ package searchengine.repositories;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.ListCrudRepository;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.SiteEntity;
@@ -15,13 +14,13 @@ import java.util.Optional;
 
 @Repository
 public interface SiteRepository extends ListCrudRepository<SiteEntity, Integer> {
-    @Query("SELECT s FROM SiteEntity s WHERE s.url = ?1")
-    Optional<SiteEntity> findByUrl(String url);
+//    @Query("SELECT s FROM SiteEntity s WHERE s.url LIKE ?1%")
+    Optional<SiteEntity> findByUrlLike(String url);
 
     @Modifying
     @Transactional
     @Query("DELETE FROM SiteEntity s WHERE s.name IN :names")
-    void deleteBulkByNames(@Param("names") List<String> names);
+    void deleteByNameIn(String[] names);
 
 
     @Modifying
@@ -33,5 +32,7 @@ public interface SiteRepository extends ListCrudRepository<SiteEntity, Integer> 
     @Transactional
     @Query("UPDATE SiteEntity s SET statusTime = ?2, status = ?3, lastError = ?4 WHERE s = ?1")
     void update(SiteEntity site, LocalDateTime statusTime, SiteStatus status, String error);
+
+    List<SiteEntity> findByNameIn(String[] names);
 }
 

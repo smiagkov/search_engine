@@ -3,6 +3,8 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import searchengine.config.SiteConfig;
+import searchengine.config.SitesList;
 import searchengine.dto.search.*;
 import searchengine.exceptions.EmptyQueryException;
 import searchengine.exceptions.NotIndexedSiteException;
@@ -13,6 +15,9 @@ import searchengine.model.SiteEntity;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.utils.LemmaUtils;
+import searchengine.utils.PageParsingUtils;
+import searchengine.utils.SnippetUtils;
 
 import java.util.*;
 import java.util.function.Predicate;
@@ -21,15 +26,13 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
-    private final LemmaService lemmaService;
-    private final SnippetService snippetService;
+    private final LemmaUtils lemmaUtils;
+    private final SnippetUtils snippetUtils;
     private final LemmaRepository lemmaRepository;
     private final SiteRepository siteRepository;
     private final IndexRepository indexRepository;
     private final PageParsingUtils pageParsingUtils;
-
-    private Query previousQuery;
-    private Map<PageEntity, Float> previousSearchPagesWithRelevance;
+    private final SitesList sitesList;
     private final static float INFREQUENCY_FACTOR = 0.5F;
 
     public SearchResponse getQueryResponse(Query query) {
@@ -37,17 +40,11 @@ public class SearchServiceImpl implements SearchService {
         String queryText = query.queryText();
         Map<PageEntity, Float> pagesWithRelevance;
         String[] queryLemmas = getQueryLemmas(queryText);
-        Arrays.stream(queryLemmas).forEach(i -> System.out.println(queryText + " -> " + i));
         try {
             if (queryText.isBlank()) {
                 throw new EmptyQueryException("Задан пустой поисковый запрос");
-            } else if (query.equals(previousQuery)) {
-                pagesWithRelevance = Map.copyOf(previousSearchPagesWithRelevance);
-            } else {
-                pagesWithRelevance = getSearchResults(query, queryLemmas);
-                previousQuery = query;
-                previousSearchPagesWithRelevance = pagesWithRelevance;
             }
+            pagesWithRelevance = getSearchResults(query, queryLemmas);
             return generateResponse(pagesWithRelevance, query, queryLemmas);
         } catch (EmptyQueryException e) {
             return new SearchErrorResponse(false, HttpStatus.BAD_REQUEST, e.getMessage());
@@ -60,17 +57,21 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private String[] getQueryLemmas(String queryText) {
-        return lemmaService.getLemmasStatistics(queryText).keySet().toArray(String[]::new);
+        return lemmaUtils.getLemmasStatistics(queryText).keySet().toArray(String[]::new);
     }
 
     private SiteEntity[] getSites(Query query) throws RuntimeException {
         SiteEntity[] siteEntities;
         String site = query.site();
         if (site == null) {
-            siteEntities = siteRepository.findAll().toArray(SiteEntity[]::new);
+            String[] siteNames = sitesList.getSites().stream()
+                    .map(SiteConfig::getName)
+                    .toArray(String[]::new);
+            siteEntities = siteRepository.findByNameIn(siteNames).toArray(SiteEntity[]::new);
         } else {
             siteEntities = new SiteEntity[]{
-                    siteRepository.findByUrl(site).orElseThrow(NotIndexedSiteException::new)};
+                    siteRepository.findByUrlLike(pageParsingUtils.normalizeSiteUrl(site))
+                            .orElseThrow(NotIndexedSiteException::new)};
         }
         if (areNotIndexedSites(siteEntities)) {
             throw new NotIndexedSiteException();
@@ -98,7 +99,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private Map<PageEntity, List<LemmaEntity>> getRelatedPagesInfo(SiteEntity siteEntity, String[] queryLemmas) {
-        List<LemmaEntity> lemmaEntities = lemmaRepository.findAllByLemmasSite(siteEntity, queryLemmas);
+        List<LemmaEntity> lemmaEntities = lemmaRepository.findBySiteAndLemmaIn(siteEntity, queryLemmas);
         if (lemmaEntities.size() != queryLemmas.length) {
             return Collections.emptyMap();
         }
@@ -151,7 +152,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private float getAbsoluteRelevance(Map.Entry<PageEntity, List<LemmaEntity>> entry) {
-        return indexRepository.findAllByPageLemmaIn(entry.getKey(), entry.getValue()).stream()
+        return indexRepository.findByPageAndLemmaIn(entry.getKey(), entry.getValue()).stream()
                 .map(IndexEntity::getRank)
                 .reduce(0F, Float::sum);
     }
@@ -181,6 +182,6 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private String getSnippet(PageEntity pageEntity, String[] queryLemmas) {
-        return snippetService.getSnippet(pageEntity.getContent(), queryLemmas);
+        return snippetUtils.getSnippet(pageEntity.getContent(), queryLemmas);
     }
 }

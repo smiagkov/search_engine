@@ -13,6 +13,7 @@ import searchengine.model.SiteStatus;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.utils.PageParsingUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -29,6 +30,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final LemmaRepository lemmaRepository;
+    private final PageParsingUtils pageParsingUtils;
     private final SitesList sites;
 
     @Override
@@ -63,13 +65,14 @@ public class StatisticsServiceImpl implements StatisticsService {
         DetailedStatisticsItem item = new DetailedStatisticsItem();
         item.setName(site.getName());
         item.setUrl(site.getUrl());
+        String normalizedUrl = pageParsingUtils.normalizeSiteUrl(site.getUrl());
         int pages = 0;
         int lemmas = 0;
         SiteStatus siteStatus;
         String lastError;
         LocalDateTime statusTime;
         try {
-            SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl()).orElseThrow();
+            SiteEntity siteEntity = siteRepository.findByUrlLike(normalizedUrl).orElseThrow();
             pages = pageRepository.countBySite(siteEntity);
             lemmas = lemmaRepository.countBySite(siteEntity);
             siteStatus = siteEntity.getStatus();
