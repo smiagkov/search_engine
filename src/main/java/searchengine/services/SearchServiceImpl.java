@@ -27,9 +27,6 @@ public class SearchServiceImpl implements SearchService {
     private final SiteRepository siteRepository;
     private final IndexRepository indexRepository;
     private final PageParsingUtils pageParsingUtils;
-
-    private Query previousQuery;
-    private Map<PageEntity, Float> previousSearchPagesWithRelevance;
     private final static float INFREQUENCY_FACTOR = 0.5F;
 
     public SearchResponse getQueryResponse(Query query) {
@@ -37,17 +34,11 @@ public class SearchServiceImpl implements SearchService {
         String queryText = query.queryText();
         Map<PageEntity, Float> pagesWithRelevance;
         String[] queryLemmas = getQueryLemmas(queryText);
-        Arrays.stream(queryLemmas).forEach(i -> System.out.println(queryText + " -> " + i));
         try {
             if (queryText.isBlank()) {
                 throw new EmptyQueryException("Задан пустой поисковый запрос");
-            } else if (query.equals(previousQuery)) {
-                pagesWithRelevance = Map.copyOf(previousSearchPagesWithRelevance);
-            } else {
-                pagesWithRelevance = getSearchResults(query, queryLemmas);
-                previousQuery = query;
-                previousSearchPagesWithRelevance = pagesWithRelevance;
             }
+            pagesWithRelevance = getSearchResults(query, queryLemmas);
             return generateResponse(pagesWithRelevance, query, queryLemmas);
         } catch (EmptyQueryException e) {
             return new SearchErrorResponse(false, HttpStatus.BAD_REQUEST, e.getMessage());
@@ -70,7 +61,8 @@ public class SearchServiceImpl implements SearchService {
             siteEntities = siteRepository.findAll().toArray(SiteEntity[]::new);
         } else {
             siteEntities = new SiteEntity[]{
-                    siteRepository.findByUrl(site).orElseThrow(NotIndexedSiteException::new)};
+                    siteRepository.findByUrl(pageParsingUtils.normalizeSiteUrl(site))
+                            .orElseThrow(NotIndexedSiteException::new)};
         }
         if (areNotIndexedSites(siteEntities)) {
             throw new NotIndexedSiteException();

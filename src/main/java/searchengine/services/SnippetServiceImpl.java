@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 @Component
@@ -16,27 +17,25 @@ public class SnippetServiceImpl implements SnippetService {
     @Override
     public String getSnippet(String html, String[] queryLemmas) {
         String text = textUtils.removeHtmlTags(html);
-        String firstQueryWord = getFirstOccurrenceQueryWord(text, queryLemmas);
-        int firstQueryItemPosition = firstQueryWord == null ? -1 : text.indexOf(firstQueryWord);
-        String truncatedText = truncate(text, firstQueryItemPosition);
+        int firstQueryWordPosition = getFirstOccurrenceQueryWordPosition(text, queryLemmas);
+        String truncatedText = truncate(text, firstQueryWordPosition);
         return getHighlightedText(truncatedText, queryLemmas);
     }
 
-    private String getFirstOccurrenceQueryWord(String text, String[] queryLemmas) {
+    private int getFirstOccurrenceQueryWordPosition(String text, String[] queryLemmas) {
         String[] words = textUtils.getWordsFromText(text);
         for (String word : words) {
             if (isContainedInQuery(word, queryLemmas)) {
-                return word;
+                return text.indexOf(word);
             }
         }
-        return null;
+        return -1;
     }
 
     private boolean isContainedInQuery(String word, String[] queryLemmas) {
         word = word.toLowerCase();
         for (String lemma : queryLemmas) {
-            if ((word.contains(lemma.substring(0, lemma.length() - 1))) &&
-                    lemmaService.getLemmasStatistics(word).containsKey(lemma)) {
+            if (lemmaService.getLemmasStatistics(word).containsKey(lemma)) {
                 return true;
             }
         }
@@ -44,18 +43,29 @@ public class SnippetServiceImpl implements SnippetService {
     }
 
     private String truncate(String text, int queryItemPosition) {
-        int beginPosition = queryItemPosition > 0 ? getBeginPosition(text, queryItemPosition) : 0;
+        if (queryItemPosition < 0) {
+            return text.substring(0, Math.min(text.length(), SNIPPET_LENGTH));
+        }
+        int beginPosition = getBeginPosition(text, queryItemPosition);
         return text.substring(beginPosition, getEndPosition(text, beginPosition));
     }
 
     private int getBeginPosition(String text, int queryItemPosition) {
         String substring = text.substring(0, queryItemPosition);
-        return Stream.of(substring.lastIndexOf(".") + 1,
+        Optional<Integer> beforeDelimiterPosition = Stream.of(substring.lastIndexOf(".") + 1,
                         substring.lastIndexOf("!") + 1,
                         substring.lastIndexOf("?") + 1)
                 .filter(i -> i > 0 && i > queryItemPosition - SNIPPET_LENGTH / 2)
-                .max(Integer::compareTo)
-                .orElse(substring.indexOf(" ", queryItemPosition - SNIPPET_LENGTH / 2));
+                .max(Integer::compareTo);
+        if (beforeDelimiterPosition.isPresent()) {
+            return beforeDelimiterPosition.get();
+        }
+        int positionsDifference = queryItemPosition - SNIPPET_LENGTH / 2;
+        if (positionsDifference > 0) {
+            substring = text.substring(positionsDifference, queryItemPosition);
+        }
+
+        return Math.max(0, substring.indexOf(" "));
     }
 
     private int getEndPosition(String text, int beginPosition) {

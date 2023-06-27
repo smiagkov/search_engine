@@ -40,7 +40,8 @@ public class IndexingServiceImpl implements IndexingService {
         initPagesCollector();
         isStartedIndexing = true;
         for (SiteConfig siteConfig : sitesConfig) {
-            SiteEntity site = new SiteEntity(siteConfig.getName(), siteConfig.getUrl());
+            SiteEntity site = new SiteEntity(siteConfig.getName(),
+                    pageParsingUtils.normalizeSiteUrl(siteConfig.getUrl()));
             siteRepository.save(site);
             parseSite(site);
         }
@@ -58,16 +59,9 @@ public class IndexingServiceImpl implements IndexingService {
     private void parseSite(SiteEntity site) {
         ForkJoinPool.commonPool().execute(() -> {
             try {
-                System.out.println("Starting indexing for ".concat(site.getName()).concat("..."));
                 switch (ForkJoinPool.commonPool().invoke(new PagesCollector(site))) {
-                    case COMPLETED -> {
-                        site.update(SiteStatus.INDEXED);
-                        System.out.println("Indexing of the ".concat(site.getName()).concat(" ended."));
-                    }
-                    case INTERRUPTED -> {
-                        site.update("Индексация остановлена пользователем");
-                        System.out.println("Indexing of the ".concat(site.getName()).concat(" interrupted."));
-                    }
+                    case COMPLETED -> site.update(SiteStatus.INDEXED);
+                    case INTERRUPTED -> site.update("Индексация остановлена пользователем");
                 }
             } catch (Exception e) {
                 site.update(e.getMessage());

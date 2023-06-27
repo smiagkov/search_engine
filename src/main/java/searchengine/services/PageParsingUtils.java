@@ -69,4 +69,16 @@ public class PageParsingUtils {
         Document document = Jsoup.parse(html);
         return document.title();
     }
+
+    public String normalizeSiteUrl(String urlPresentation) {
+        URL url;
+        try {
+            url = new URL(urlPresentation);
+        } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
+        return url.getProtocol()
+                .concat("://")
+                .concat(url.getHost());
+    }
 }
