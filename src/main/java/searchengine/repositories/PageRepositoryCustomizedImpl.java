@@ -8,7 +8,6 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.exceptions.DuplicatePageException;
 import searchengine.model.PageEntity;
-import searchengine.repositories.PageRepositoryCustomized;
 
 @Repository
 @RequiredArgsConstructor

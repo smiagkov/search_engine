@@ -82,7 +82,7 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private boolean isAllSitesParsingEnded() {
-        return ((List<SiteEntity>) siteRepository.findAll()).stream()
+        return siteRepository.findAll().stream()
                 .allMatch(Predicate.not(
                         i -> i.getStatus().equals(SiteStatus.INDEXING)));
     }

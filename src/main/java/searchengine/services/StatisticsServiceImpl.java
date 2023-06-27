@@ -19,14 +19,12 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements StatisticsService {
 
     public static final String INDEXING_NOT_YET_STARTED = "Индексация ещё не запущена.";
-    private final Random random = new Random();
     private final IndexingService indexingService;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
@@ -35,7 +33,6 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public StatisticsResponse getStatistics() {
-        String[] statuses = {"INDEXED", "FAILED", "INDEXING"};
         String[] errors = {
                 "Ошибка индексации: главная страница сайта не доступна",
                 "Ошибка индексации: сайт не доступен",

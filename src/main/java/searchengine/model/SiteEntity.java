@@ -57,8 +57,4 @@ public class SiteEntity {
         this.lastError = lastError;
         update(SiteStatus.FAILED);
     }
-
-    public void addPage(PageEntity page) {
-        pages.add(page);
-    }
 }

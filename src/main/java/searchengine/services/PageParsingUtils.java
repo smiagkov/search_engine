@@ -3,6 +3,7 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Component;
 import searchengine.config.PagesCollectorConfig;
 
@@ -62,5 +63,10 @@ public class PageParsingUtils {
                 .url(link)
                 .followRedirects(params.getRedirect())
                 .execute();
+    }
+
+    public String getTitle(String html) {
+        Document document = Jsoup.parse(html);
+        return document.title();
     }
 }

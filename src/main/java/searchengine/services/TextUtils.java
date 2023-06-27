@@ -1,7 +1,6 @@
 package searchengine.services;
 
 import org.jsoup.Jsoup;
-import org.jsoup.parser.Parser;
 import org.springframework.stereotype.Component;
 
 import java.util.regex.MatchResult;

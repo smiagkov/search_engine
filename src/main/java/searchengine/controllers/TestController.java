@@ -10,6 +10,7 @@ import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+
 import searchengine.services.Test1;
 import searchengine.services.TextUtils;
 
@@ -35,7 +36,7 @@ public class TestController {
 
     @GetMapping("/test")
     public ResponseEntity<StatisticsResponse> test() {
-        test1.testUpsert();
+//        test1.testUpsert();
         return ResponseEntity.ok().build();
     }
 

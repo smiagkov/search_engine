@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 import searchengine.model.*;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
-import searchengine.repositories.SiteRepository;
 
 import java.io.IOException;
 import java.util.*;
@@ -17,10 +16,12 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class LemmaServiceImpl implements LemmaService {
+    public static final String RESTRICTED_LEMMA_TYPES_PATTERN = ".+(ПРЕДЛ|СОЮЗ|МЕЖД|ЧАСТ).*";
     private final TextUtils textUtils;
-    private final SiteRepository siteRepository;
     private final IndexRepository indexRepository;
     private final LemmaRepository lemmaRepository;
+    private LuceneMorphology luceneMorphology;
+
     private static final Object lock = new Object();
 
     @Override
@@ -30,13 +31,12 @@ public class LemmaServiceImpl implements LemmaService {
     }
 
     @Override
-    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page) throws IOException {
-        Map<String, Integer> lemmas = getLemmas(page.getContent());
+    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page){
+        Map<String, Integer> lemmas = getLemmasStatistics(textUtils.removeHtmlTags(page.getContent()));
         for (Map.Entry<String, Integer> lemmaEntry : lemmas.entrySet()) {
             LemmaEntity lemma = addOrUpdateLemma(site, lemmaEntry);
             indexRepository.save(new IndexEntity(page, lemma, lemmaEntry.getValue()));
         }
-
     }
 
     private LemmaEntity addOrUpdateLemma(SiteEntity site, Map.Entry<String, Integer> lemmaEntry) {
@@ -54,16 +54,27 @@ public class LemmaServiceImpl implements LemmaService {
         return lemma;
     }
 
-    public Map<String, Integer> getLemmas(String text) throws IOException {
-        Set<String> restrictedLemmaTypes = Set.of("ПРЕДЛ", "СОЮЗ", "МЕЖД", "ЧАСТ");
-        String[] words = textUtils.getWordsFromText(textUtils.removeHtmlTags(text));
-        LuceneMorphology luceneMorphology = new RussianLuceneMorphology();
-        return Arrays.stream(words)
+    public Map<String, Integer> getLemmasStatistics(String text) {
+        Map<String, Integer> lemmas;
+        String[] words = textUtils.getWordsFromText(text);
+        lemmas = Arrays.stream(words)
                 .map(String::toLowerCase)
-                .map(luceneMorphology::getMorphInfo)
+                .map(getLuceneMorphology()::getMorphInfo)
                 .flatMap(List::stream)
-                .filter(Predicate.not(restrictedLemmaTypes::contains))
+                .filter(Predicate.not(s -> s.matches(RESTRICTED_LEMMA_TYPES_PATTERN)))
                 .map(s -> s.split("\\|"))
                 .collect(Collectors.toMap(i -> i[0], i -> 1, Integer::sum));
+        return lemmas;
+    }
+
+    private LuceneMorphology getLuceneMorphology() {
+        if (luceneMorphology == null) {
+            try {
+                luceneMorphology = new RussianLuceneMorphology();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return luceneMorphology;
     }
 }
