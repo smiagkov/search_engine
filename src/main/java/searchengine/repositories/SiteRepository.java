@@ -14,7 +14,6 @@ import java.util.Optional;
 
 @Repository
 public interface SiteRepository extends ListCrudRepository<SiteEntity, Integer> {
-//    @Query("SELECT s FROM SiteEntity s WHERE s.url LIKE ?1%")
     Optional<SiteEntity> findByUrlLike(String url);
 
     @Modifying

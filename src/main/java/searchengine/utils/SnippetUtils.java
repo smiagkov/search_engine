@@ -58,7 +58,6 @@ public class SnippetUtils {
                 .filter(i -> i > 0 && i > startPosition)
                 .max(Integer::compareTo);
         return beforeDelimiterPosition.orElseGet(() -> Math.max(0, text.indexOf(" ", startPosition)));
-
     }
 
     private int getEndPosition(String text, int beginPosition) {

@@ -33,6 +33,7 @@ public class SearchServiceImpl implements SearchService {
     private final IndexRepository indexRepository;
     private final PageParsingUtils pageParsingUtils;
     private final SitesList sitesList;
+
     private final static float INFREQUENCY_FACTOR = 0.5F;
 
     public SearchResponse getQueryResponse(Query query) {
@@ -70,6 +71,7 @@ public class SearchServiceImpl implements SearchService {
             siteEntities = siteRepository.findByNameIn(siteNames).toArray(SiteEntity[]::new);
         } else {
             siteEntities = new SiteEntity[]{
+
                     siteRepository.findByUrlLike(pageParsingUtils.normalizeSiteUrl(site))
                             .orElseThrow(NotIndexedSiteException::new)};
         }
