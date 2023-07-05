@@ -16,9 +16,7 @@ public interface LemmaRepository extends CrudRepository<LemmaEntity, Integer>, L
 
     Optional<LemmaEntity> findBySiteAndLemma(SiteEntity site, String lemma);
 
-//    @Query("SELECT COUNT(l) FROM LemmaEntity l WHERE l.site = ?1")
     int countBySite(SiteEntity siteEntity);
 
-//    @Query("SELECT l FROM LemmaEntity l WHERE l.site = ?1 AND l.lemma IN ?2")
     List<LemmaEntity> findBySiteAndLemmaIn(SiteEntity site, String[] queryLemmas);
 }

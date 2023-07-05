@@ -3,6 +3,7 @@ package searchengine.services;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Connection;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 import searchengine.config.PagesCollectorConfig;
 import searchengine.config.SiteConfig;
@@ -26,6 +27,7 @@ import java.util.concurrent.*;
 import java.util.function.Predicate;
 
 @Service
+//@Scope(value = "prototype")
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepository;
