@@ -1,12 +1,12 @@
-package searchengine.services;
+package searchengine.utils;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.nodes.Document;
 import org.springframework.http.HttpStatus;
 import searchengine.config.PagesCollectorConfig;
+import searchengine.dto.parsing.ParsingResult;
 import searchengine.exceptions.DuplicatePageException;
 import searchengine.model.IndexEntity;
 import searchengine.model.LemmaEntity;
@@ -16,7 +16,6 @@ import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.model.SiteEntity;
 import searchengine.repositories.SiteRepository;
-import searchengine.utils.*;
 
 import java.io.IOException;
 import java.net.URL;
@@ -28,7 +27,7 @@ import java.util.stream.Collectors;
 
 @Setter
 @Getter
-public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
+public class PagesCollector extends RecursiveTask<PagesCollectEndType> {
     private static SiteRepository siteRepository;
     private static PageRepository pageRepository;
     private static LemmaRepository lemmaRepository;
@@ -52,47 +51,57 @@ public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
     }
 
     @Override
-    protected PagesCollectionEndType compute() throws RuntimeException {
-        Document document;
-        Connection.Response response;
+    protected PagesCollectEndType compute() throws RuntimeException {
+        ParsingResult response;
         String[] children = {};
         PageEntity page;
         if (!isStartedIndexing) {
-            return PagesCollectionEndType.INTERRUPTED;
-        }
-        synchronized (lock) {
-            page = new PageEntity(site, path);
-            try {
-                pageRepository.saveIfNotExists(page);
-            } catch (DuplicatePageException e) {
-                return PagesCollectionEndType.COMPLETED;
-            }
+            return PagesCollectEndType.INTERRUPTED;
         }
         try {
-            response = pageParsingUtils.getPageResponse(path, new URL(site.getUrl()));
-            document = response.parse();
-            page.update(response.statusCode(), document.html());
+            page = getNewPageEntity(site, path);
+        } catch(DuplicatePageException e) {
+            return PagesCollectEndType.COMPLETED;
+        }
+        try {
+            response = pageParsingUtils.getHttpResponse(path, new URL(site.getUrl()));
+            page.update(response.statusCode(), response.document().html());
             if (response.statusCode() >= 400) {
-                return PagesCollectionEndType.COMPLETED;
+                return PagesCollectEndType.COMPLETED;
             }
             addLemmasAndIndexesToDB(site, page);
-            children = getChildPages(document);
+            children = getChildPages(response.document());
         } catch (HttpStatusException e) {
             page.update(e.getStatusCode());
         } catch (IOException e) {
             page.update(HttpStatus.INTERNAL_SERVER_ERROR.value());
-        } catch (Exception e) {
-            page.update(HttpStatus.INTERNAL_SERVER_ERROR.value(), e.toString());
-        } finally {
-            pageRepository.update(page, page.getCode(), page.getContent());
-            site.update();
-            siteRepository.updateStatusTime(site, site.getStatusTime());
+        }  finally {
+            pageRepository.save(page);
+            site.updateTimestamp();
+            siteRepository.save(site);
         }
+        return getPagesCollectResult(children);
+    }
+
+    private PageEntity getNewPageEntity(SiteEntity site, String path) throws DuplicatePageException {
+        Optional<PageEntity> optionalPage;
+        synchronized (lock) {
+            optionalPage = pageRepository.findByPathAndSite(path, site);
+            if (optionalPage.isEmpty()) {
+                PageEntity page = new PageEntity(site, path);
+                pageRepository.save(page);
+                return page;
+            }
+        }
+        throw new DuplicatePageException();
+    }
+
+    private PagesCollectEndType getPagesCollectResult(String[] children) {
         return ForkJoinTask.invokeAll(new ArrayList<>(getSubTasks(children))).stream()
                 .map(ForkJoinTask::join)
-                .anyMatch(i -> i.equals(PagesCollectionEndType.INTERRUPTED)) ?
-                PagesCollectionEndType.INTERRUPTED :
-                PagesCollectionEndType.COMPLETED;
+                .anyMatch(i -> i.equals(PagesCollectEndType.INTERRUPTED)) ?
+                PagesCollectEndType.INTERRUPTED :
+                PagesCollectEndType.COMPLETED;
     }
 
     private String[] getChildPages(Document document) {
@@ -102,7 +111,7 @@ public class PagesCollector extends RecursiveTask<PagesCollectionEndType> {
                 .filter(s -> pageParsingUtils.isValidChildLink(s, site.getUrl()))
                 .map(s -> s.startsWith("/") ? s : pageParsingUtils.getRelativePath(s))
                 .collect(Collectors.toSet());
-        Set<String> savedPages = pageRepository.findAllBySitePathIn(parsedPages, site);
+        Set<String> savedPages = pageRepository.getAllPathsBySitePathIn(parsedPages, site);
         filteredPages = parsedPages.stream()
                 .filter(Predicate.not(savedPages::contains))
                 .toArray(String[]::new);

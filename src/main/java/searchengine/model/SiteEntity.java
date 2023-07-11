@@ -44,13 +44,13 @@ public class SiteEntity {
         this.name = name;
     }
 
-    public void update() {
+    public void updateTimestamp() {
         this.statusTime = LocalDateTime.now();
     }
 
     public void update(SiteStatus status) {
         this.status = status;
-        update();
+        updateTimestamp();
     }
 
     public void update(String lastError) {

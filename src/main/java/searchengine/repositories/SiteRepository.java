@@ -6,9 +6,7 @@ import org.springframework.data.repository.ListCrudRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.SiteEntity;
-import searchengine.model.SiteStatus;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,17 +18,6 @@ public interface SiteRepository extends ListCrudRepository<SiteEntity, Integer> 
     @Transactional
     @Query("DELETE FROM SiteEntity s WHERE s.name IN :names")
     void deleteByNameIn(String[] names);
-
-
-    @Modifying
-    @Transactional
-    @Query("UPDATE SiteEntity s SET statusTime = ?2 WHERE s = ?1")
-    void updateStatusTime(SiteEntity rootPage, LocalDateTime statusTime);
-
-    @Modifying
-    @Transactional
-    @Query("UPDATE SiteEntity s SET statusTime = ?2, status = ?3, lastError = ?4 WHERE s = ?1")
-    void update(SiteEntity site, LocalDateTime statusTime, SiteStatus status, String error);
 
     List<SiteEntity> findByNameIn(String[] names);
 }

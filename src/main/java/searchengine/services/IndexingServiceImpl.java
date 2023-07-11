@@ -2,12 +2,11 @@ package searchengine.services;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.jsoup.Connection;
-import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 import searchengine.config.PagesCollectorConfig;
 import searchengine.config.SiteConfig;
 import searchengine.dto.indexing.IndexingResponse;
+import searchengine.dto.parsing.ParsingResult;
 import searchengine.model.*;
 import searchengine.config.SitesList;
 import searchengine.repositories.IndexRepository;
@@ -16,6 +15,7 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.utils.LemmaUtils;
 import searchengine.utils.PageParsingUtils;
+import searchengine.utils.PagesCollector;
 import searchengine.utils.TextUtils;
 
 import java.io.IOException;
@@ -27,7 +27,6 @@ import java.util.concurrent.*;
 import java.util.function.Predicate;
 
 @Service
-//@Scope(value = "prototype")
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepository;
@@ -43,6 +42,7 @@ public class IndexingServiceImpl implements IndexingService {
     private boolean isStartedIndexing;
     private final Object lock = new Object();
 
+    @Override
     public IndexingResponse startIndexing() {
         if (isStartedIndexing) {
             return new IndexingResponse(false, "Индексация уже запущена");
@@ -72,15 +72,15 @@ public class IndexingServiceImpl implements IndexingService {
     private void parseSite(SiteEntity site) {
         ForkJoinPool.commonPool().execute(() -> {
             try {
+                pageParsingUtils.getHttpResponse(new URL(site.getUrl()));
                 switch (ForkJoinPool.commonPool().invoke(new PagesCollector(site))) {
                     case COMPLETED -> site.update(SiteStatus.INDEXED);
                     case INTERRUPTED -> site.update("Индексация остановлена пользователем");
                 }
-            } catch (Exception e) {
-                site.update(e.getMessage());
-                System.out.println("Indexing of the ".concat(site.getName()).concat(" failed."));
+            } catch (IOException e) {
+                site.update("Ошибка индексации. Сайт недоступен.");
             } finally {
-                siteRepository.update(site, site.getStatusTime(), site.getStatus(), site.getLastError());
+                siteRepository.save(site);
                 if (isStartedIndexing && isAllSitesParsingEnded()) {
                     isStartedIndexing = false;
                 }
@@ -102,6 +102,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     }
 
+    @Override
     public IndexingResponse stopIndexing() {
         if (!isStartedIndexing) {
             return new IndexingResponse(false, "Индексация не запущена");
@@ -123,18 +124,19 @@ public class IndexingServiceImpl implements IndexingService {
             }
             SiteConfig siteConfigForSpecifiedUrl = optionalSiteConfigForSpecifiedUrl.get();
             siteEntity = findOrAddSite(siteConfigForSpecifiedUrl);
-            Connection.Response response = pageParsingUtils.getPageResponse(new URL(url));
+            ParsingResult response = pageParsingUtils.getHttpResponse(new URL(url));
             if (response.statusCode() >= 400) {
                 return new IndexingResponse(false,
                         "Страница не может быть проиндексирована. Ошибка: " + response.statusCode());
             }
             deletePageIfExists(relativePath, siteEntity);
-            PageEntity page = new PageEntity(siteEntity, relativePath, response.statusCode(), response.parse().html());
+            PageEntity page = new PageEntity(siteEntity, relativePath,
+                    response.statusCode(), response.document().html());
             pageRepository.save(page);
             addLemmasAndIndexesToDB(siteEntity, page);
             return new IndexingResponse(true, "");
         } catch (IOException e) {
-            return new IndexingResponse(false, e.getMessage());
+            return new IndexingResponse(false, "Ошибка индексации. Страница недоступна.");
         }
     }
 
@@ -165,7 +167,7 @@ public class IndexingServiceImpl implements IndexingService {
         });
     }
 
-    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page){
+    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page) {
         Map<String, Integer> lemmas = lemmaUtils.getLemmasStatistics(
                 textUtils.removeHtmlTags(page.getContent()));
         for (Map.Entry<String, Integer> lemmaEntry : lemmas.entrySet()) {

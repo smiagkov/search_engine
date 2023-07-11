@@ -3,14 +3,14 @@ package searchengine.utils;
 import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-@Service
+@Component
 @RequiredArgsConstructor
 public class LemmaUtils {
     public static final String RESTRICTED_LEMMA_TYPES_PATTERN = ".+(ПРЕДЛ|СОЮЗ|МЕЖД|ЧАСТ).*";

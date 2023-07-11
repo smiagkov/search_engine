@@ -1,5 +1,5 @@
 package searchengine.utils;
 
-public enum PagesCollectionEndType {
+public enum PagesCollectEndType {
     COMPLETED, INTERRUPTED
 }

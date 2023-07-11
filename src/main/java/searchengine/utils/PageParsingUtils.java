@@ -6,6 +6,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Component;
 import searchengine.config.PagesCollectorConfig;
+import searchengine.dto.parsing.ParsingResult;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -37,32 +38,23 @@ public class PageParsingUtils {
         return !url.contains(".") || url.matches(".+(\\.htm|\\.html)[/?]?.*");
     }
 
-    public Connection.Response getPageResponse(String url, URL rootPage) throws IOException {
-        try {
-            Thread.sleep(params.getDelay());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        return Jsoup.newSession()
-                .userAgent(params.getJsoupUserAgent())
-                .referrer(params.getJsoupReferer())
-                .url(new URL(rootPage, url))
-                .followRedirects(params.getRedirect())
-                .execute();
+    public ParsingResult getHttpResponse(String url, URL rootPage) throws IOException {
+        return getHttpResponse(new URL(rootPage, url));
     }
 
-    public Connection.Response getPageResponse(URL link) throws IOException {
+    public ParsingResult getHttpResponse(URL link) throws IOException {
         try {
             Thread.sleep(params.getDelay());
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        return Jsoup.newSession()
+        Connection.Response response =  Jsoup.newSession()
                 .userAgent(params.getJsoupUserAgent())
                 .referrer(params.getJsoupReferer())
                 .url(link)
                 .followRedirects(params.getRedirect())
                 .execute();
+        return new ParsingResult(response.statusCode(), response.parse());
     }
 
     public String getTitle(String html) {
