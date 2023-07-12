@@ -7,12 +7,9 @@ import org.jsoup.nodes.Document;
 import org.springframework.http.HttpStatus;
 import searchengine.config.PagesCollectorConfig;
 import searchengine.dto.parsing.ParsingResult;
+import searchengine.dto.parsing.ReposUtilsParams;
 import searchengine.exceptions.DuplicatePageException;
-import searchengine.model.IndexEntity;
-import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
-import searchengine.repositories.IndexRepository;
-import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.model.SiteEntity;
 import searchengine.repositories.SiteRepository;
@@ -28,26 +25,35 @@ import java.util.stream.Collectors;
 @Setter
 @Getter
 public class PagesCollector extends RecursiveTask<PagesCollectEndType> {
-    private static SiteRepository siteRepository;
-    private static PageRepository pageRepository;
-    private static LemmaRepository lemmaRepository;
-    private static IndexRepository indexRepository;
-    private static LemmaUtils lemmaUtils;
-    private static PagesCollectorConfig params;
-    private static PageParsingUtils pageParsingUtils;
-    private static TextUtils textUtils;
+    private SiteRepository siteRepository;
+    private PageRepository pageRepository;
+    private LemmaUtils lemmaUtils;
+    private PagesCollectorConfig params;
+    private PageParsingUtils pageParsingUtils;
+    private TextUtils textUtils;
     private String path;
     private final SiteEntity site;
+    private ReposUtilsParams parameters;
     private static boolean isStartedIndexing;
     private final static Object lock = new Object();
 
-    public PagesCollector(String path, SiteEntity site) {
+    public PagesCollector(String path, SiteEntity site, ReposUtilsParams parameters) {
         this.path = path;
         this.site = site;
+        this.siteRepository = parameters.siteRepository();
+        this.pageRepository = parameters.pageRepository();
+        this.lemmaUtils = parameters.lemmaUtils();
+        this.textUtils = parameters.textUtils();
+        this.pageParsingUtils = parameters.pageParsingUtils();
+        this.params = parameters.collectorConfig();
+        this.parameters = parameters;
     }
 
-    public PagesCollector(SiteEntity rootPage) {
-        this(pageParsingUtils.getRelativePath(rootPage.getUrl()), rootPage);
+    public PagesCollector(SiteEntity rootPage, ReposUtilsParams parameters) {
+        this(parameters.pageParsingUtils().getRelativePath(rootPage.getUrl()),
+                rootPage,
+                parameters);
+        isStartedIndexing = true;
     }
 
     @Override
@@ -69,7 +75,7 @@ public class PagesCollector extends RecursiveTask<PagesCollectEndType> {
             if (response.statusCode() >= 400) {
                 return PagesCollectEndType.COMPLETED;
             }
-            addLemmasAndIndexesToDB(site, page);
+            lemmaUtils.addLemmasAndIndexesToDB(site, page);
             children = getChildPages(response.document());
         } catch (HttpStatusException e) {
             page.update(e.getStatusCode());
@@ -120,62 +126,11 @@ public class PagesCollector extends RecursiveTask<PagesCollectEndType> {
 
     private List<PagesCollector> getSubTasks(String[] pages) {
         return Arrays.stream(pages)
-                .map(e -> new PagesCollector(e, site))
+                .map(e -> new PagesCollector(e, site, parameters))
                 .toList();
-    }
-
-    public static void addRepositories(SiteRepository siteRepository, PageRepository pageRepository,
-                                       LemmaRepository lemmaRepository, IndexRepository indexRepository) {
-        PagesCollector.pageRepository = pageRepository;
-        PagesCollector.siteRepository = siteRepository;
-        PagesCollector.lemmaRepository = lemmaRepository;
-        PagesCollector.indexRepository = indexRepository;
-    }
-
-    public static void setParams(PagesCollectorConfig params) {
-        PagesCollector.params = params;
-    }
-
-    public static void setUtils(PageParsingUtils pageParsingUtils, TextUtils textUtils,
-                                LemmaUtils lemmaUtils) {
-        PagesCollector.pageParsingUtils = pageParsingUtils;
-        PagesCollector.textUtils = textUtils;
-        PagesCollector.lemmaUtils = lemmaUtils;
-    }
-
-    public static void setLemmaUtils(LemmaUtils lemmaUtils) {
-        PagesCollector.lemmaUtils = lemmaUtils;
-    }
-
-    public static void setStartedParsing(boolean isStartedIndexing) {
-        PagesCollector.isStartedIndexing = isStartedIndexing;
     }
 
     public static void stopParsing() {
         isStartedIndexing = false;
-    }
-
-    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page) {
-        Map<String, Integer> lemmas = lemmaUtils.getLemmasStatistics(
-                textUtils.removeHtmlTags(page.getContent()));
-        for (Map.Entry<String, Integer> lemmaEntry : lemmas.entrySet()) {
-            LemmaEntity lemma = addOrUpdateLemma(site, lemmaEntry);
-            indexRepository.save(new IndexEntity(page, lemma, lemmaEntry.getValue()));
-        }
-    }
-
-    private LemmaEntity addOrUpdateLemma(SiteEntity site, Map.Entry<String, Integer> lemmaEntry) {
-        LemmaEntity lemma;
-        synchronized (lock) {
-            Optional<LemmaEntity> optionalLemma = lemmaRepository.findBySiteAndLemma(site, lemmaEntry.getKey());
-            if (optionalLemma.isEmpty()) {
-                lemma = new LemmaEntity(site, lemmaEntry.getKey());
-            } else {
-                lemma = optionalLemma.get();
-                lemma.setFrequency(lemma.getFrequency() + 1);
-            }
-            lemmaRepository.save(lemma);
-        }
-        return lemma;
     }
 }

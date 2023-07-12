@@ -7,9 +7,9 @@ import searchengine.config.PagesCollectorConfig;
 import searchengine.config.SiteConfig;
 import searchengine.dto.indexing.IndexingResponse;
 import searchengine.dto.parsing.ParsingResult;
+import searchengine.dto.parsing.ReposUtilsParams;
 import searchengine.model.*;
 import searchengine.config.SitesList;
-import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
@@ -21,7 +21,6 @@ import searchengine.utils.TextUtils;
 import java.io.IOException;
 import java.net.URL;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.function.Predicate;
@@ -31,7 +30,6 @@ import java.util.function.Predicate;
 public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
-    private final IndexRepository indexRepository;
     private final PagesCollectorConfig params;
     private final PageParsingUtils pageParsingUtils;
     private final TextUtils textUtils;
@@ -40,7 +38,6 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaRepository lemmaRepository;
     @Getter
     private boolean isStartedIndexing;
-    private final Object lock = new Object();
 
     @Override
     public IndexingResponse startIndexing() {
@@ -49,7 +46,7 @@ public class IndexingServiceImpl implements IndexingService {
         }
         List<SiteConfig> sitesConfig = sitesList.getSites();
         deleteSitesFromDB(sitesConfig);
-        initPagesCollector();
+//        initPagesCollector();
         isStartedIndexing = true;
         for (SiteConfig siteConfig : sitesConfig) {
             SiteEntity site = new SiteEntity(siteConfig.getName(),
@@ -60,20 +57,13 @@ public class IndexingServiceImpl implements IndexingService {
         return new IndexingResponse(true, "");
     }
 
-    private void initPagesCollector() {
-        PagesCollector.addRepositories(siteRepository, pageRepository,
-                lemmaRepository, indexRepository);
-        PagesCollector.setParams(params);
-        PagesCollector.setUtils(pageParsingUtils, textUtils, lemmaUtils);
-        PagesCollector.setStartedParsing(true);
-        PagesCollector.setLemmaUtils(lemmaUtils);
-    }
-
     private void parseSite(SiteEntity site) {
         ForkJoinPool.commonPool().execute(() -> {
             try {
                 pageParsingUtils.getHttpResponse(new URL(site.getUrl()));
-                switch (ForkJoinPool.commonPool().invoke(new PagesCollector(site))) {
+                ReposUtilsParams parameters = new ReposUtilsParams(siteRepository, pageRepository,lemmaUtils,
+                        pageParsingUtils, textUtils, params);
+                switch (ForkJoinPool.commonPool().invoke(new PagesCollector(site, parameters))) {
                     case COMPLETED -> site.update(SiteStatus.INDEXED);
                     case INTERRUPTED -> site.update("Индексация остановлена пользователем");
                 }
@@ -133,7 +123,9 @@ public class IndexingServiceImpl implements IndexingService {
             PageEntity page = new PageEntity(siteEntity, relativePath,
                     response.statusCode(), response.document().html());
             pageRepository.save(page);
-            addLemmasAndIndexesToDB(siteEntity, page);
+            lemmaUtils.addLemmasAndIndexesToDB(siteEntity, page);
+            siteEntity.update(SiteStatus.INDEXED);
+            siteRepository.save(siteEntity);
             return new IndexingResponse(true, "");
         } catch (IOException e) {
             return new IndexingResponse(false, "Ошибка индексации. Страница недоступна.");
@@ -150,11 +142,12 @@ public class IndexingServiceImpl implements IndexingService {
         SiteEntity siteForSpecifiedUrl;
         Optional<SiteEntity> optionalSite = siteRepository.findByUrlLike(siteConfig.getUrl());
         if (optionalSite.isEmpty()) {
-            siteForSpecifiedUrl = new SiteEntity(siteConfig.getName(), siteConfig.getUrl(), SiteStatus.INDEXED);
-            siteRepository.save(siteForSpecifiedUrl);
+            siteForSpecifiedUrl = new SiteEntity(siteConfig.getName(), siteConfig.getUrl());
         } else {
             siteForSpecifiedUrl = optionalSite.get();
+            siteForSpecifiedUrl.update(SiteStatus.INDEXING);
         }
+        siteRepository.save(siteForSpecifiedUrl);
         return siteForSpecifiedUrl;
     }
 
@@ -165,29 +158,5 @@ public class IndexingServiceImpl implements IndexingService {
             lemmaRepository.decrementFrequencyOrDelete(lemmas);
             pageRepository.delete(page);
         });
-    }
-
-    public void addLemmasAndIndexesToDB(SiteEntity site, PageEntity page) {
-        Map<String, Integer> lemmas = lemmaUtils.getLemmasStatistics(
-                textUtils.removeHtmlTags(page.getContent()));
-        for (Map.Entry<String, Integer> lemmaEntry : lemmas.entrySet()) {
-            LemmaEntity lemma = addOrUpdateLemma(site, lemmaEntry);
-            indexRepository.save(new IndexEntity(page, lemma, lemmaEntry.getValue()));
-        }
-    }
-
-    private LemmaEntity addOrUpdateLemma(SiteEntity site, Map.Entry<String, Integer> lemmaEntry) {
-        LemmaEntity lemma;
-        synchronized (lock) {
-            Optional<LemmaEntity> optionalLemma = lemmaRepository.findBySiteAndLemma(site, lemmaEntry.getKey());
-            if (optionalLemma.isEmpty()) {
-                lemma = new LemmaEntity(site, lemmaEntry.getKey());
-            } else {
-                lemma = optionalLemma.get();
-                lemma.setFrequency(lemma.getFrequency() + 1);
-            }
-            lemmaRepository.save(lemma);
-        }
-        return lemma;
     }
 }
